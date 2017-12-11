@@ -2,6 +2,7 @@
   "dependencies": {
     "@types/node": "^8.0.57",
     "elm": "0.18.0",
+    "prettier": "^1.9.1",
     "ts-node": "^3.3.0",
     "typescript": "^2.6.2"
   }
