@@ -1,6 +1,9 @@
 {
   "dependencies": {
+    "@types/chokidar": "^1.7.4",
     "@types/node": "^8.0.57",
+    "@types/watch": "^1.0.0",
+    "chokidar": "^1.7.0",
     "elm": "0.18.0",
     "prettier": "^1.9.1",
     "ts-node": "^3.3.0",

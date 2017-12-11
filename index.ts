@@ -2,31 +2,58 @@
 
 import { spawn, spawnSync } from 'child_process'
 import * as net from 'net'
+import * as chokidar from 'chokidar'
 
 function daemon() {
-    const server = net.createServer(c => {
+    let compiling = false
+
+    function process(message: any) {
+        if (message.type === 'compile') {
+            if (compiling) {
+                console.log('Already compiling')
+                return
+            }
+
+            compiling = true
+
+            const elmMake = spawn('elm-make', [], { stdio: 'inherit' })
+
+            elmMake.on('close', code => {
+                compiling = false
+                message.connection.end()
+            })
+        } else if (message.type === 'file-event') {
+            console.log('file changed', message.file)
+        }
+    }
+
+    const server = net.createServer(connection => {
         // 'connection' listener
         console.log('client connected')
 
-        c.on('data', buffer => {
+        connection.on('data', buffer => {
             const str = buffer.toString('utf8')
             console.log('receiving data', str)
             const json = JSON.parse(str)
 
-            spawnSync('elm-make', [], { stdio: 'inherit' })
-
-            c.end()
+            process({ type: 'compile', connection })
         })
 
-        c.on('end', () => {
+        connection.on('end', () => {
             console.log('client disconnected')
         })
     })
+
     server.on('error', err => {
         throw err
     })
+
     server.listen(3111, () => {
         console.log('server bound')
+    })
+
+    chokidar.watch('./src').on('all', (event, path) => {
+        process({ type: 'file-event', event, path })
     })
 }
 
