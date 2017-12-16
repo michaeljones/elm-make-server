@@ -4,13 +4,29 @@ import { spawn, spawnSync } from 'child_process'
 import * as net from 'net'
 import * as chokidar from 'chokidar'
 
+type CompileMessage = {
+    type: 'compile'
+    connection: net.Socket
+}
+
+type FileMessage = {
+    type: 'file-event'
+    event: string
+    path: string
+}
+
+type Message = CompileMessage | FileMessage
+
+const compileQueue: CompileMessage[] = []
+
 function daemon() {
     let compiling = false
 
-    function process(message: any) {
+    function process(message: Message) {
         if (message.type === 'compile') {
             if (compiling) {
-                console.log('Already compiling')
+                console.log('Already compiling adding to queue')
+                compileQueue.push(message)
                 return
             }
 
@@ -21,9 +37,17 @@ function daemon() {
             elmMake.on('close', code => {
                 compiling = false
                 message.connection.end()
+
+                const nextMessage = compileQueue.shift()
+                if (nextMessage) {
+                    console.log('Removing message from queue')
+                    process(nextMessage)
+                } else {
+                    console.log('No more messages on the queue')
+                }
             })
         } else if (message.type === 'file-event') {
-            console.log('file changed', message.file)
+            console.log('file changed', message.path)
         }
     }
 
@@ -52,7 +76,7 @@ function daemon() {
         console.log('server bound')
     })
 
-    chokidar.watch('./src').on('all', (event, path) => {
+    chokidar.watch('./src').on('all', (event: string, path: string) => {
         process({ type: 'file-event', event, path })
     })
 }
