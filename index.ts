@@ -5,6 +5,7 @@ import * as net from 'net'
 import * as chokidar from 'chokidar'
 import * as debug from 'debug'
 import * as uuid from 'uuid/v4'
+import * as _ from 'lodash'
 
 debug.enable('*')
 
@@ -27,10 +28,23 @@ type FileMessage = {
 
 type Message = CompileMessage | FileMessage
 
+type LogLine = {
+    time: number
+    text: string
+}
+
+type Response = {
+    type: 'compile-log'
+    stdout: LogLine[]
+    stderr: LogLine[]
+}
+
 const compileQueue: CompileMessage[] = []
 
 function daemon() {
     let compiling = false
+    let compileStandardOut: LogLine[] = []
+    let compileStandardErr: LogLine[] = []
 
     function process(message: Message) {
         if (message.type === 'compile') {
@@ -42,12 +56,39 @@ function daemon() {
             }
 
             compiling = true
+            compileStandardOut = []
+            compileStandardErr = []
 
-            const elmMake = spawn('elm-make', message.args, { stdio: 'inherit' })
+            const elmMake = spawn('elm-make', message.args)
+
+            elmMake.stdout.on('data', buffer => {
+                if (typeof buffer !== 'string') {
+                    const str = buffer.toString('utf8')
+                    compileStandardOut.push({ time: Date.now(), text: str })
+                    serverLog(clientId, str)
+                }
+            })
+
+            elmMake.stderr.on('data', buffer => {
+                if (typeof buffer !== 'string') {
+                    const str = buffer.toString('utf8')
+                    serverLog(clientId, str)
+                    compileStandardErr.push({ time: Date.now(), text: str })
+                }
+            })
 
             elmMake.on('close', code => {
                 serverLog(clientId, 'Finished compiling')
                 compiling = false
+
+                const response = {
+                    type: 'compile-log',
+                    stdout: compileStandardOut,
+                    stderr: compileStandardErr
+                }
+
+                message.connection.write(JSON.stringify(response))
+
                 message.connection.end()
 
                 const nextMessage = compileQueue.shift()
@@ -120,6 +161,26 @@ async function sendCompile(id: string, command: string[]) {
     return new Promise((resolve, reject) => {
         const client = net.createConnection({ port: 3111 }, () => {
             clientLog(id, 'Found daemon for sending command')
+        })
+
+        client.on('data', buffer => {
+            const str = buffer.toString('utf8')
+            const data: Response = JSON.parse(str)
+            clientLog(id, str)
+
+            if (data.type === 'compile-log') {
+                const logs = data.stdout
+                    .map(log => ({ ...log, type: 'stdout' }))
+                    .concat(data.stderr.map(log => ({ ...log, type: 'stderr' })))
+
+                for (const entry of _.sortBy(logs, 'time')) {
+                    if (entry.type === 'stdout') {
+                        console.log(entry.text.trim())
+                    } else {
+                        console.error(entry.text.trim())
+                    }
+                }
+            }
         })
 
         client.on('end', () => {
