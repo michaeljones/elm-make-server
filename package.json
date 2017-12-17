@@ -1,12 +1,16 @@
 {
   "dependencies": {
     "@types/chokidar": "^1.7.4",
+    "@types/debug": "^0.0.30",
     "@types/node": "^8.0.57",
+    "@types/uuid": "^3.4.3",
     "@types/watch": "^1.0.0",
     "chokidar": "^1.7.0",
+    "debug": "^3.1.0",
     "elm": "0.18.0",
     "prettier": "^1.9.1",
     "ts-node": "^3.3.0",
-    "typescript": "^2.6.2"
+    "typescript": "^2.6.2",
+    "uuid": "^3.1.0"
   }
 }

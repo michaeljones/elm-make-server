@@ -3,10 +3,20 @@
 import { spawn, spawnSync } from 'child_process'
 import * as net from 'net'
 import * as chokidar from 'chokidar'
+import * as debug from 'debug'
+import * as uuid from 'uuid/v4'
+
+debug.enable('*')
+
+const serverLog = debug('server')
+const clientLog = debug('client')
 
 type CompileMessage = {
     type: 'compile'
     connection: net.Socket
+    args: string[]
+    cwd: string
+    clientId: string
 }
 
 type FileMessage = {
@@ -24,47 +34,52 @@ function daemon() {
 
     function process(message: Message) {
         if (message.type === 'compile') {
+            const clientId = message.clientId
             if (compiling) {
-                console.log('Already compiling adding to queue')
+                serverLog(clientId, 'Already compiling adding to queue')
                 compileQueue.push(message)
                 return
             }
 
             compiling = true
 
-            const elmMake = spawn('elm-make', [], { stdio: 'inherit' })
+            const elmMake = spawn('elm-make', message.args, { stdio: 'inherit' })
 
             elmMake.on('close', code => {
+                serverLog(clientId, 'Finished compiling')
                 compiling = false
                 message.connection.end()
 
                 const nextMessage = compileQueue.shift()
                 if (nextMessage) {
-                    console.log('Removing message from queue')
+                    serverLog(clientId, 'Removing message from queue')
                     process(nextMessage)
                 } else {
-                    console.log('No more messages on the queue')
+                    serverLog(clientId, 'No more messages on the queue')
                 }
             })
         } else if (message.type === 'file-event') {
-            console.log('file changed', message.path)
+            serverLog('file changed', message.path)
         }
     }
 
     const server = net.createServer(connection => {
         // 'connection' listener
-        console.log('client connected')
+        serverLog('client connected')
 
         connection.on('data', buffer => {
             const str = buffer.toString('utf8')
-            console.log('receiving data', str)
+            serverLog('receiving data', str)
             const json = JSON.parse(str)
 
-            process({ type: 'compile', connection })
+            const args = json.command.slice(2)
+            const cwd = json.cwd
+            const clientId = json.clientId
+            process({ type: 'compile', connection, args, cwd, clientId })
         })
 
         connection.on('end', () => {
-            console.log('client disconnected')
+            serverLog('client disconnected')
         })
     })
 
@@ -73,7 +88,7 @@ function daemon() {
     })
 
     server.listen(3111, () => {
-        console.log('server bound')
+        serverLog('server bound')
     })
 
     chokidar.watch('./src').on('all', (event: string, path: string) => {
@@ -81,49 +96,61 @@ function daemon() {
     })
 }
 
+//
+// Client Code
+//
+
 async function isDaemonRunning() {
     return new Promise((resolve, reject) => {
         const client = net.createConnection({ port: 3111 }, () => {
-            console.log('Found daemon')
+            clientLog('Found daemon')
             client.end()
             resolve(true)
         })
 
         client.on('error', err => {
-            console.log('Failed to find daemon')
+            clientLog('Failed to find daemon')
             client.end()
             resolve(false)
         })
     })
 }
 
-async function sendCompile(args: string[]) {
+async function sendCompile(id: string, command: string[]) {
     return new Promise((resolve, reject) => {
         const client = net.createConnection({ port: 3111 }, () => {
-            console.log('Found daemon for sending args')
+            clientLog(id, 'Found daemon for sending command')
         })
 
         client.on('end', () => {
+            clientLog(id, "Received 'end'")
             client.end()
+            clientLog(id, 'Ended')
             resolve(true)
         })
 
         client.on('error', err => {
-            console.log('Failed to find daemon')
+            clientLog(id, 'Failed to find daemon')
             client.end()
             resolve(false)
         })
 
-        client.write(JSON.stringify(args), 'utf8')
+        const message = {
+            command,
+            cwd: process.cwd(),
+            clientId: id
+        }
+        client.write(JSON.stringify(message), 'utf8')
     })
 }
 
-async function main(args: string[]) {
-    console.log(args)
+async function main(command: string[]) {
+    const id = uuid().slice(0, 5)
+    clientLog(id, command)
 
-    const nodeExe = args[0]
-    const script = args[1]
-    const isDaemon = args[2] === 'daemon'
+    const nodeExe = command[0]
+    const script = command[1]
+    const isDaemon = command[2] === 'daemon'
 
     if (isDaemon) {
         // If we're meant to be the daemon then set up the daemon
@@ -132,15 +159,16 @@ async function main(args: string[]) {
         const hasDaemon = await isDaemonRunning()
         if (!hasDaemon) {
             // If we can't find the daemon, then set up the daemon
-            console.log('Setting up daemon')
+            clientLog(id, 'Setting up daemon')
             const options = {
                 stdio: 'inherit'
             }
 
             const childProcess = spawn('node', [script, 'daemon'], options)
         } else {
-            // We can find the daemon, sent it our args
-            sendCompile(args)
+            // We can find the daemon, sent it our command
+            await sendCompile(id, command)
+            clientLog(id, 'Finished')
         }
     }
 }
