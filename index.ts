@@ -7,8 +7,6 @@ import * as debug from 'debug'
 import * as uuid from 'uuid/v4'
 import * as _ from 'lodash'
 
-debug.enable('*')
-
 const serverLog = debug('server')
 const clientLog = debug('client')
 
@@ -206,6 +204,10 @@ async function sendCompile(id: string, command: string[]) {
 }
 
 async function main(command: string[]) {
+    if (process.env.ELM_SERVER_VERBOSE) {
+        debug.enable('*')
+    }
+
     const id = uuid().slice(0, 5)
     clientLog(id, command)
 
@@ -214,6 +216,9 @@ async function main(command: string[]) {
     const isDaemon = command[2] === 'daemon'
 
     if (isDaemon) {
+        // Enable server log if we're in daemon mode
+        debug.enable('server')
+
         // If we're meant to be the daemon then set up the daemon
         daemon()
     } else {
