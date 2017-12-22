@@ -173,9 +173,9 @@ async function sendCompile(id: string, command: string[]) {
 
                 for (const entry of _.sortBy(logs, 'time')) {
                     if (entry.type === 'stdout') {
-                        console.log(entry.text.trim())
+                        process.stdout.write(entry.text)
                     } else {
-                        console.error(entry.text.trim())
+                        process.stderr.write(entry.text)
                     }
                 }
             }
