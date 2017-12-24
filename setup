@@ -10,6 +10,10 @@ echo Compiling typescript
 echo Marking executable
 chmod +x index.js
 
-echo Creating symlink
-mkdir bin
-ln -s `pwd`/index.js `pwd`/bin/elm-make 
+if [ ! -e bin ]; then
+	echo Creating symlink
+	mkdir bin
+	ln -s `pwd`/index.js `pwd`/bin/elm-make 
+else
+	echo bin directory already exists
+fi
