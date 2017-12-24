@@ -1,0 +1,6 @@
+#!/bin/bash
+
+export PATH=`pwd`/node_modules/.bin:$PATH
+
+# Run server
+node index.js daemon
