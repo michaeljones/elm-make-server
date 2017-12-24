@@ -34,6 +34,7 @@ type LogLine = {
 
 type Response = {
     type: 'compile-log'
+    code: number
     stdout: LogLine[]
     stderr: LogLine[]
 }
@@ -101,6 +102,7 @@ function daemon() {
 
                 const response = {
                     type: 'compile-log',
+                    code,
                     stdout: compileStandardOut,
                     stderr: compileStandardErr
                 }
@@ -176,11 +178,13 @@ async function isDaemonRunning() {
     })
 }
 
-async function sendCompile(id: string, command: string[], priority: number) {
-    return new Promise((resolve, reject) => {
+async function sendCompile(id: string, command: string[], priority: number): Promise<number> {
+    return new Promise<number>((resolve, reject) => {
         const client = net.createConnection({ port: 3111 }, () => {
             clientLog(id, 'Found daemon for sending command')
         })
+
+        let exitCode = 0
 
         client.on('data', buffer => {
             const str = buffer.toString('utf8')
@@ -188,6 +192,7 @@ async function sendCompile(id: string, command: string[], priority: number) {
             clientLog(id, str)
 
             if (data.type === 'compile-log') {
+                exitCode = data.code
                 const logs = data.stdout
                     .map(log => ({ ...log, type: 'stdout' }))
                     .concat(data.stderr.map(log => ({ ...log, type: 'stderr' })))
@@ -206,13 +211,15 @@ async function sendCompile(id: string, command: string[], priority: number) {
             clientLog(id, "Received 'end'")
             client.end()
             clientLog(id, 'Ended')
-            resolve(true)
+            resolve(exitCode)
         })
 
         client.on('error', err => {
             clientLog(id, 'Failed to find daemon')
             client.end()
-            resolve(false)
+
+            // Exit code 1 on error
+            resolve(1)
         })
 
         const message = {
@@ -261,8 +268,9 @@ async function main(command: string[]) {
             const childProcess = spawn('node', [script, 'daemon'], options)
         } else {
             // We can find the daemon, sent it our command
-            await sendCompile(id, command, priority)
-            clientLog(id, 'Finished')
+            const exitCode = await sendCompile(id, command, priority)
+            clientLog(id, 'Finished. Status code: ', exitCode)
+            process.exit(exitCode)
         }
     }
 }
