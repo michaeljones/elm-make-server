@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from 'child_process'
+import { spawn, spawnSync, ChildProcess } from 'child_process'
 import * as net from 'net'
 import * as chokidar from 'chokidar'
 import * as debug from 'debug'
@@ -16,6 +16,7 @@ type CompileMessage = {
     args: string[]
     cwd: string
     clientId: string
+    priority: number
 }
 
 type FileMessage = {
@@ -40,26 +41,45 @@ type Response = {
 const compileQueue: CompileMessage[] = []
 
 function daemon() {
-    let compiling = false
+    let currentJob: { message: CompileMessage; process: ChildProcess } | null = null
     let compileStandardOut: LogLine[] = []
     let compileStandardErr: LogLine[] = []
 
     function process(message: Message) {
         if (message.type === 'compile') {
             const clientId = message.clientId
-            if (compiling) {
-                serverLog(clientId, 'Already compiling adding to queue')
-                compileQueue.push(message)
-                return
+            if (currentJob) {
+                if (currentJob.message.priority > message.priority) {
+                    serverLog(
+                        clientId,
+                        `Killing ${currentJob.message.clientId}:${currentJob.message.priority} in favour of ${
+                            message.clientId
+                        }:${message.priority}`
+                    )
+
+                    compileQueue.push(currentJob.message)
+                    currentJob.process.kill()
+                } else {
+                    serverLog(
+                        clientId,
+                        `Already compiling a higher priority job ${currentJob.message.clientId}:${
+                            currentJob.message.priority
+                        } vs ${message.clientId}:${message.priority} adding to queue`
+                    )
+                    compileQueue.push(message)
+                    return
+                }
             }
 
-            compiling = true
             compileStandardOut = []
             compileStandardErr = []
 
-            const elmMake = spawn('elm-make', message.args)
+            currentJob = {
+                process: spawn('elm-make', message.args),
+                message
+            }
 
-            elmMake.stdout.on('data', buffer => {
+            currentJob.process.stdout.on('data', buffer => {
                 if (typeof buffer !== 'string') {
                     const str = buffer.toString('utf8')
                     compileStandardOut.push({ time: Date.now(), text: str })
@@ -67,7 +87,7 @@ function daemon() {
                 }
             })
 
-            elmMake.stderr.on('data', buffer => {
+            currentJob.process.stderr.on('data', buffer => {
                 if (typeof buffer !== 'string') {
                     const str = buffer.toString('utf8')
                     serverLog(clientId, str)
@@ -75,9 +95,9 @@ function daemon() {
                 }
             })
 
-            elmMake.on('close', code => {
+            currentJob.process.on('close', code => {
                 serverLog(clientId, 'Finished compiling')
-                compiling = false
+                currentJob = null
 
                 const response = {
                     type: 'compile-log',
@@ -114,7 +134,8 @@ function daemon() {
             const args = json.command.slice(2)
             const cwd = json.cwd
             const clientId = json.clientId
-            process({ type: 'compile', connection, args, cwd, clientId })
+            const priority = json.priority
+            process({ type: 'compile', connection, args, cwd, clientId, priority })
         })
 
         connection.on('end', () => {
@@ -155,7 +176,7 @@ async function isDaemonRunning() {
     })
 }
 
-async function sendCompile(id: string, command: string[]) {
+async function sendCompile(id: string, command: string[], priority: number) {
     return new Promise((resolve, reject) => {
         const client = net.createConnection({ port: 3111 }, () => {
             clientLog(id, 'Found daemon for sending command')
@@ -197,7 +218,8 @@ async function sendCompile(id: string, command: string[]) {
         const message = {
             command,
             cwd: process.cwd(),
-            clientId: id
+            clientId: id,
+            priority
         }
         client.write(JSON.stringify(message), 'utf8')
     })
@@ -206,6 +228,12 @@ async function sendCompile(id: string, command: string[]) {
 async function main(command: string[]) {
     if (process.env.ELM_SERVER_VERBOSE) {
         debug.enable('*')
+    }
+
+    let priority = 10
+    const priorityEnv = process.env.ELM_SERVER_PRIORITY
+    if (priorityEnv) {
+        priority = parseInt(priorityEnv, 10)
     }
 
     const id = uuid().slice(0, 5)
@@ -233,7 +261,7 @@ async function main(command: string[]) {
             const childProcess = spawn('node', [script, 'daemon'], options)
         } else {
             // We can find the daemon, sent it our command
-            await sendCompile(id, command)
+            await sendCompile(id, command, priority)
             clientLog(id, 'Finished')
         }
     }
