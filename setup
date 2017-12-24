@@ -1,0 +1,15 @@
+#!/bin/bash
+
+set -e
+
+cd $(dirname $0)
+
+echo Compiling typescript
+./node_modules/.bin/tsc
+
+echo Marking executable
+chmod +x index.js
+
+echo Creating symlink
+mkdir bin
+ln -s `pwd`/index.js `pwd`/bin/elm-make 
