@@ -75,7 +75,7 @@ function daemon() {
             compileStandardErr = []
 
             currentJob = {
-                process: spawn('elm-make', message.args),
+                process: spawn('elm-make', message.args, { cwd: message.cwd }),
                 message
             }
 
