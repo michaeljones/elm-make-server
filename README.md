@@ -41,7 +41,7 @@ Alpha. Feedback welcome.
 1. Clone this repository
 2. Run install with `npm` or `yarn`
 3. Run `./setup`. This creates a `bin` directory.
-4. Run `node index.js`
+4. Run `elm-make-server`
 5. Open a new shell & navigate to your elm project directory
 6. Add the `bin` directory created in step 3 to your PATH
 7. Run `elm-make`, or your webpack build, or your editor. You should see the build being handled in
