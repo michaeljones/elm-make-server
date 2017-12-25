@@ -34,7 +34,7 @@ type Response = {
 
 const compileQueue: CompileMessage[] = []
 
-function daemon() {
+function server() {
     let currentJob: { message: CompileMessage; process: ChildProcess } | null = null
     let compileStandardOut: LogLine[] = []
     let compileStandardErr: LogLine[] = []
@@ -152,7 +152,7 @@ function daemon() {
 async function sendCompile(id: string, command: string[], priority: number): Promise<number> {
     return new Promise<number>((resolve, reject) => {
         const client = net.createConnection({ port: 3111 }, () => {
-            clientLog(id, 'Found daemon for sending command')
+            clientLog(id, 'Found server for sending command')
         })
 
         let exitCode = 0
@@ -186,7 +186,7 @@ async function sendCompile(id: string, command: string[], priority: number): Pro
         })
 
         client.on('error', err => {
-            clientLog(id, 'Failed to find daemon')
+            clientLog(id, 'Failed to find server')
             client.end()
 
             // Exit code 1 on error
@@ -219,16 +219,16 @@ async function main(command: string[]) {
 
     const nodeExe = command[0]
     const script = command[1]
-    const isDaemon = command[2] === 'daemon'
+    const isDaemon = command[2] === 'server'
 
     if (isDaemon) {
-        // Enable server log if we're in daemon mode
+        // Enable server log if we're in server mode
         debug.enable('server')
 
-        // If we're meant to be the daemon then set up the daemon
-        daemon()
+        // If we're meant to be the server then set up the server
+        server()
     } else {
-        // We can find the daemon, sent it our command
+        // We can find the server, sent it our command
         const exitCode = await sendCompile(id, command, priority)
         clientLog(id, 'Finished. Status code: ', exitCode)
         process.exit(exitCode)
