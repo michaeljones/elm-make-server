@@ -2,7 +2,6 @@
 
 import { spawn, spawnSync, ChildProcess } from 'child_process'
 import * as net from 'net'
-import * as chokidar from 'chokidar'
 import * as debug from 'debug'
 import * as uuid from 'uuid/v4'
 import * as _ from 'lodash'
@@ -19,13 +18,7 @@ type CompileMessage = {
     priority: number
 }
 
-type FileMessage = {
-    type: 'file-event'
-    event: string
-    path: string
-}
-
-type Message = CompileMessage | FileMessage
+type Message = CompileMessage
 
 type LogLine = {
     time: number
@@ -119,8 +112,6 @@ function daemon() {
                     serverLog(clientId, 'No more messages on the queue')
                 }
             })
-        } else if (message.type === 'file-event') {
-            serverLog('file changed', message.path)
         }
     }
 
@@ -151,10 +142,6 @@ function daemon() {
 
     server.listen(3111, () => {
         serverLog('server bound')
-    })
-
-    chokidar.watch('./src').on('all', (event: string, path: string) => {
-        process({ type: 'file-event', event, path })
     })
 }
 

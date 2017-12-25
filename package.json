@@ -1,12 +1,10 @@
 {
   "dependencies": {
-    "@types/chokidar": "^1.7.4",
     "@types/debug": "^0.0.30",
     "@types/lodash": "^4.14.91",
     "@types/node": "^8.0.57",
     "@types/uuid": "^3.4.3",
     "@types/watch": "^1.0.0",
-    "chokidar": "^1.7.0",
     "debug": "^3.1.0",
     "elm": "0.18.0",
     "lodash": "^4.17.4",
