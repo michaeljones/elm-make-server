@@ -149,22 +149,6 @@ function daemon() {
 // Client Code
 //
 
-async function isDaemonRunning() {
-    return new Promise((resolve, reject) => {
-        const client = net.createConnection({ port: 3111 }, () => {
-            clientLog('Found daemon')
-            client.end()
-            resolve(true)
-        })
-
-        client.on('error', err => {
-            clientLog('Failed to find daemon')
-            client.end()
-            resolve(false)
-        })
-    })
-}
-
 async function sendCompile(id: string, command: string[], priority: number): Promise<number> {
     return new Promise<number>((resolve, reject) => {
         const client = net.createConnection({ port: 3111 }, () => {
@@ -244,21 +228,10 @@ async function main(command: string[]) {
         // If we're meant to be the daemon then set up the daemon
         daemon()
     } else {
-        const hasDaemon = await isDaemonRunning()
-        if (!hasDaemon) {
-            // If we can't find the daemon, then set up the daemon
-            clientLog(id, 'Setting up daemon')
-            const options = {
-                stdio: 'inherit'
-            }
-
-            const childProcess = spawn('node', [script, 'daemon'], options)
-        } else {
-            // We can find the daemon, sent it our command
-            const exitCode = await sendCompile(id, command, priority)
-            clientLog(id, 'Finished. Status code: ', exitCode)
-            process.exit(exitCode)
-        }
+        // We can find the daemon, sent it our command
+        const exitCode = await sendCompile(id, command, priority)
+        clientLog(id, 'Finished. Status code: ', exitCode)
+        process.exit(exitCode)
     }
 }
 
