@@ -131,13 +131,17 @@ function server() {
             process({ type: 'compile', connection, args, cwd, clientId, priority })
         })
 
+        connection.on('error', err => {
+            serverLog('connection error', err)
+        })
+
         connection.on('end', () => {
             serverLog('client disconnected')
         })
     })
 
     server.on('error', err => {
-        throw err
+        serverLog('error', err)
     })
 
     server.listen(3111, () => {
