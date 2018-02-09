@@ -182,10 +182,19 @@ async function sendCompile(id: string, command: string[], priority: number): Pro
 
         let exitCode = 0
 
+        let responseString = ''
+
         client.on('data', buffer => {
             const str = buffer.toString('utf8')
-            const data: Response = JSON.parse(str)
-            clientLog(id, str)
+            responseString += str
+        })
+
+        client.on('end', () => {
+            clientLog(id, "Received 'end'")
+
+            const data: Response = JSON.parse(responseString)
+            responseString = ''
+            clientLog(id, responseString)
 
             if (data.type === 'compile-log') {
                 exitCode = data.code
@@ -201,12 +210,14 @@ async function sendCompile(id: string, command: string[], priority: number): Pro
                     }
                 }
             }
+
+            resolve(exitCode)
         })
 
-        client.on('end', () => {
-            clientLog(id, "Received 'end'")
+        client.on('close', () => {
+            clientLog(id, "Received 'close'")
             client.end()
-            clientLog(id, 'Ended')
+            clientLog(id, 'Closed')
             resolve(exitCode)
         })
 
