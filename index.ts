@@ -32,7 +32,7 @@ type Response = {
     stderr: LogLine[]
 }
 
-const compileQueue: CompileMessage[] = []
+let compileQueue: CompileMessage[] = []
 
 function server() {
     let currentJob: { message: CompileMessage; process: ChildProcess } | null = null
@@ -119,6 +119,8 @@ function server() {
         // 'connection' listener
         serverLog('client connected')
 
+        let clientId: string | null = null
+
         connection.on('data', buffer => {
             const str = buffer.toString('utf8')
             serverLog('receiving data', str)
@@ -126,9 +128,12 @@ function server() {
 
             const args = json.command.slice(2)
             const cwd = json.cwd
-            const clientId = json.clientId
+            clientId = json.clientId
             const priority = json.priority
-            process({ type: 'compile', connection, args, cwd, clientId, priority })
+
+            if (clientId !== null) {
+                process({ type: 'compile', connection, args, cwd, clientId, priority })
+            }
         })
 
         connection.on('error', err => {
@@ -137,6 +142,22 @@ function server() {
 
         connection.on('end', () => {
             serverLog('client disconnected')
+
+            if (clientId !== null) {
+                compileQueue = compileQueue.filter(message => message.clientId !== clientId)
+
+                if (currentJob !== null && currentJob.message.clientId === clientId) {
+                    currentJob.process.kill()
+
+                    const nextMessage = compileQueue.shift()
+                    if (nextMessage) {
+                        serverLog(clientId, 'Removing message from queue')
+                        process(nextMessage)
+                    } else {
+                        serverLog(clientId, 'No more messages on the queue')
+                    }
+                }
+            }
         })
     })
 
